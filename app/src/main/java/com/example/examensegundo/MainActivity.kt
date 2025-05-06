@@ -1,5 +1,7 @@
 package com.example.examensegundo
 
+
+
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -28,51 +30,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.concurrent.timer
-import kotlinx.coroutines.delay
 
-
-// FUNCIONES AUXILIARES AQUÍ
-fun saveBitmapToFile(context: Context, bitmap: Bitmap): File {
-    val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-    val file = File(context.externalCacheDir, "JPEG_${timeStamp}.jpg")
-    file.outputStream().use {
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
-    }
-    return file
-}
-
-fun saveBitmapToGallery(context: Context, bitmap: Bitmap) {
-    val filename = "IMG_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.jpg"
-    val contentValues = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Examen2")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-    }
-
-    val contentResolver = context.contentResolver
-    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-
-    uri?.let {
-        contentResolver.openOutputStream(it)?.use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            contentValues.clear()
-            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(it, contentValues, null, null)
-        }
-    }
-}
-
-// ACTIVIDAD PRINCIPAL
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,7 +44,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// UI PRINCIPAL
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
@@ -93,13 +54,14 @@ fun MainScreen() {
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var hasCameraPermission by remember { mutableStateOf(false) }
     var hasLocationPermission by remember { mutableStateOf(false) }
+
     var token by remember { mutableStateOf("") }
     var userToken by remember { mutableStateOf("") }
     var showTokenField by remember { mutableStateOf(false) }
     var tokenTimer by remember { mutableStateOf(15) }
     var tokenExpired by remember { mutableStateOf(false) }
 
-    val isCurpValid = curp.length == 18 && Regex("^[A-Z]{4}\\d{6}[HM][A-Z]{5}\\d{2}$").matches(curp)
+    val isCurpValid = curp.length == 18 && Regex("^[A-Z0-9]{18}$").matches(curp)
     val isTokenValid = token == userToken && !tokenExpired
     val isFormValid = nombre.isNotBlank() && isCurpValid && capturedBitmap != null && isTokenValid
 
@@ -108,11 +70,12 @@ fun MainScreen() {
             capturedBitmap = it
             val file = saveBitmapToFile(context, it)
             imageUri = Uri.fromFile(file)
-            showTokenField = true
+            // Generar token al tomar la foto
             token = (100..999).random().toString()
             tokenTimer = 15
             tokenExpired = false
             userToken = ""
+            showTokenField = true
         }
     }
 
@@ -169,7 +132,7 @@ fun MainScreen() {
 
         BasicTextField(
             value = curp,
-            onValueChange = { curp = it.uppercase() },
+            onValueChange = { curp = it.uppercase() }, // CURP en mayúsculas
             decorationBox = { innerTextField ->
                 Box(Modifier.fillMaxWidth().padding(8.dp).height(56.dp), contentAlignment = Alignment.CenterStart) {
                     if (curp.isEmpty()) Text("CURP")
@@ -222,13 +185,61 @@ fun MainScreen() {
                 if (isFormValid) {
                     saveBitmapToGallery(context, capturedBitmap!!)
                     Toast.makeText(context, "Nombre: $nombre\nCURP: $curp\nFoto guardada", Toast.LENGTH_LONG).show()
+
+                    // Limpiar campos
+                    nombre = ""
+                    curp = ""
+                    capturedBitmap = null
+                    imageUri = null
+                    token = ""
+                    userToken = ""
+                    showTokenField = false
+                    tokenTimer = 15
+                    tokenExpired = false
+
                 } else {
-                    Toast.makeText(context, "Información errónea", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Información incorrecta o incompleta", Toast.LENGTH_SHORT).show()
                 }
             },
             enabled = isFormValid
         ) {
             Text("Aceptar")
+        }
+    }
+}
+
+fun saveBitmapToFile(context: Context, bitmap: Bitmap): File {
+    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    val file = File(context.externalCacheDir, "JPEG_${timeStamp}.jpg")
+    file.outputStream().use {
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
+    }
+    return file
+}
+
+fun saveBitmapToGallery(context: Context, bitmap: Bitmap) {
+    val filename = "IMG_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.jpg"
+    val contentValues = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/ExamenFusionado")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+    }
+
+    val contentResolver = context.contentResolver
+    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+    uri?.let {
+        contentResolver.openOutputStream(it)?.use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            contentValues.clear()
+            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+            contentResolver.update(it, contentValues, null, null)
         }
     }
 }
